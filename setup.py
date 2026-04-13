@@ -18,7 +18,7 @@ def load_requirements():
 
 setup(
     name="faradayai",
-    version="0.2.1",
+    version="0.1.0",
     install_requires=load_requirements(),
     packages=find_namespace_packages(include=['faraday*']),
     entry_points={
