@@ -1,0 +1,50 @@
+# Example: batch run with literature / medicinal-chemistry prompts
+#
+# Usage (from repo root):
+#   faraday --config examples/configs/batch-literature-queries.yaml
+#
+# Uses host mode by default. For Docker app mode, change app.mode to docker
+# and set absolute container paths (e.g. source_root: /workspace).
+
+name: faraday-batch-literature-queries
+
+llm:
+  provider: openai
+  model: gpt-5
+  api_key_env: OPENAI_API_KEY
+
+backends:
+  db: sqlite
+  rag: in-memory
+
+app:
+  mode: host
+  workspace:
+    source_root: .
+    # Optional isolated-copy mode for repeatable experiments:
+    # init_mode: copy
+    # copy_root: ./.faraday_runtime/workspace-copies
+    # keep_copy: false
+
+sandbox:
+  backend: docker
+  workspace:
+    container_path: /workspace
+
+outputs:
+  root: ./run_outputs
+
+storage:
+  sqlite_path: ~/.faraday/faraday.db
+  save_messages: true
+  save_trajectory: true
+
+batch:
+  enabled: true
+  prompts:
+    - "Summarize the known binding mechanisms and resistance mutations associated with KRAS G12C inhibitors, and propose 2–3 structural hypotheses for next-generation inhibitor design"
+    - "Based on recent literature, what are plausible mechanisms by which PROTACs fail to degrade target proteins, and how could linker design mitigate these issues?"
+    - "Given typical kinase inhibitor scaffolds, what functional group modifications are most likely to improve selectivity over off-target kinases?"
+  max_concurrency: 1
+  max_retries: 2
+  continue_on_error: false

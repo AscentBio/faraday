@@ -1,0 +1,54 @@
+# Docker-specific Faraday runtime configuration
+# ---------------------------------------------------------------------------
+# Use when Faraday runs in the `faraday-oss` app container with a bind-mounted
+# workspace at `/workspace` and Docker code execution via the host socket.
+#
+# Typical run (from repo root):
+#   docker build -f Dockerfile.main -t faraday-oss .
+#   docker run --rm -it \
+#     -v "$PWD":/workspace \
+#     -v /var/run/docker.sock:/var/run/docker.sock \
+#     -v "$PWD/examples/configs/docker.yaml":/app/config/faraday.yaml:ro \
+#     -e OPENAI_API_KEY="$OPENAI_API_KEY" \
+#     faraday-oss "Your task here"
+#
+# The image default is copied from this file at build time (see Dockerfile.main).
+# Paths below assume `/workspace` exists inside the container.
+
+name: faraday-docker
+
+# Optional default query when no positional argument is passed:
+# query: "Summarize the README in /workspace."
+
+llm:
+  provider: openai
+  model: gpt-5.1
+  api_key_env: OPENAI_API_KEY
+
+backends:
+  db: sqlite
+  rag: in-memory
+
+app:
+  mode: docker
+  app_image: faraday-oss
+  workspace:
+    source_root: /workspace
+
+sandbox:
+  backend: docker
+  docker_image: faraday-code-sandbox
+  workspace:
+    container_path: /workspace
+
+outputs:
+  root: /workspace/run_outputs
+
+storage:
+  sqlite_path: /workspace/.faraday_runtime/faraday.db
+  save_messages: true
+  save_trajectory: true
+
+features:
+  modal: false
+  exa: false

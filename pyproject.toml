@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "faradayai"
+version = "0.1.0"
+description = "Faraday research agent"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = [
+    "exa-py>=2.10.2",
+    "modal>=1.4.0",
+    "openai>=1.0.0",
+    "openai-agents>=0.13.1",
+    "onnxruntime<1.24; python_version < '3.11'",
+    "pydantic>=2.0.0",
+    "pydantic-extra-types>=2.11.1",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.3",
+    "tenacity>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0.2"]
+
+[project.urls]
+Homepage = "https://ascentbio.ai/"
+Repository = "https://github.com/AscentBio/faraday-oss"
+
+[project.scripts]
+faraday = "faraday.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["faraday*"]
+namespaces = true

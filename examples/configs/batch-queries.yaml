@@ -1,0 +1,42 @@
+# Example: batch query runtime config
+# Usage:
+#   faraday --config examples/configs/batch-queries.yaml
+
+name: faraday-batch-queries
+
+llm:
+  provider: openai
+  model: gpt-5
+  api_key_env: OPENAI_API_KEY
+
+backends:
+  db: sqlite
+  rag: in-memory
+
+app:
+  mode: host
+  workspace:
+    source_root: .
+
+sandbox:
+  backend: docker
+  workspace:
+    container_path: /workspace
+
+outputs:
+  root: ./run_outputs
+
+storage:
+  sqlite_path: ~/.faraday/faraday.db
+  save_messages: true
+  save_trajectory: true
+
+batch:
+  enabled: true
+  prompts:
+    - "Summarize the key claims in this repository."
+    - "List main technical risks and unknowns."
+    - "Identify the top files a new contributor should read first."
+  max_concurrency: 1
+  max_retries: 2
+  continue_on_error: false

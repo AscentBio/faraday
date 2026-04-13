@@ -1,0 +1,36 @@
+# Default Faraday config baked into the faraday-oss Docker image.
+# All workspace paths point to the bind-mounted /workspace directory.
+# Docker-based code execution expects `/var/run/docker.sock` to be mounted into the app
+# container and the `faraday-code-sandbox` image to exist on the Docker host already.
+#
+# Override at runtime with a bind mount:
+#   -v "$PWD/faraday.yaml":/app/config/faraday.yaml:ro
+
+llm:
+  provider: openai
+  model: gpt-5.1
+  api_key_env: OPENAI_API_KEY
+
+backends:
+  db: sqlite
+  rag: in-memory
+
+app:
+  mode: docker
+
+sandbox:
+  backend: docker
+  docker_image: faraday-code-sandbox
+  allow_host_runtime: false
+  workspace:
+    container_path: /workspace
+
+outputs:
+  root: /workspace/run_outputs
+
+storage:
+  sqlite_path: /workspace/.faraday_runtime/faraday.db
+
+batch:
+  output_root: /workspace/traces
+  continue_on_error: false

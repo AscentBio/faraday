@@ -1,0 +1,37 @@
+# Faraday CLI application image (use with `faraday --use-docker` or `docker build -f Dockerfile.main`).
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    FARADAY_CONFIG=/app/config/faraday.yaml \
+    FARADAY_EXECUTION_BACKEND=local \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=docker:28-cli /usr/local/bin/docker /usr/local/bin/docker
+
+# Install dependencies first — this layer is cached until pyproject.toml or uv.lock changes
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project
+
+# Copy source and install the project into the venv
+COPY faraday/ ./faraday/
+COPY setup.py ./
+RUN uv sync --frozen
+
+# Bake in a Docker-ready default config; users can override with a bind mount:
+#   -v "$PWD/faraday.yaml":/app/config/faraday.yaml:ro
+RUN mkdir -p /app/config /workspace
+COPY faraday.docker.yaml /app/config/faraday.yaml
+
+VOLUME ["/workspace"]
+
+ENTRYPOINT ["faraday"]

@@ -1,0 +1,33 @@
+# Example: single query runtime config
+# Usage:
+#   faraday --config examples/configs/single-query.yaml "Your query here"
+# Or set `query:` in this file and run without a positional argument (CLI query overrides YAML).
+
+name: faraday-single-query
+
+llm:
+  provider: openai
+  model: gpt-5
+  api_key_env: OPENAI_API_KEY
+
+backends:
+  db: sqlite
+  rag: in-memory
+
+app:
+  mode: host
+  workspace:
+    source_root: .
+
+sandbox:
+  backend: docker
+  workspace:
+    container_path: /workspace
+
+outputs:
+  root: ./run_outputs
+
+storage:
+  sqlite_path: ~/.faraday/faraday.db
+  save_messages: true
+  save_trajectory: true

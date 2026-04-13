@@ -1,0 +1,132 @@
+# Example: open-ended protein-design data audit take-home.
+#
+# Usage (from repo root):
+#   faraday --config examples/configs/research-report-pdf.yaml
+#
+# Presents a self-contained, open-ended research task.  The agent must make
+# its own choices about which protein family, APIs, analyses, and plots to
+# use — then defend those choices in a PDF report.
+
+name: faraday-protein-design-data-audit
+query: |
+  Background
+  ──────────
+  Machine-learning approaches to protein design (stability prediction,
+  fitness landscape modelling, de novo sequence generation) depend on the
+  quality and completeness of their training data.  Many public biological
+  databases expose REST APIs that can be queried programmatically, but the
+  data rarely arrives in a form that is ready for supervised learning
+  without significant curation.
+
+  Your task is to select a protein family that is relevant to protein
+  engineering, programmatically collect data from public APIs, perform an
+  honest assessment of how "ML-ready" that data is, and deliver your
+  findings as a compiled PDF report.
+
+  You have full discretion over which protein family and which databases
+  you choose.  We care about the rigour of your analysis and the clarity
+  of your write-up, not about reaching a particular conclusion.
+
+  Scope & deliverables
+  ────────────────────
+  1. DATA RETRIEVAL
+     Query at least one biological database through its public REST API
+     (e.g. UniProt, RCSB PDB, EBI Proteins API, or another of your
+     choosing).  Retrieve a focused dataset for a single protein family
+     that is commonly studied in protein engineering contexts.
+     Save the raw response and a parsed tabular version under
+     agent_outputs/data/.
+
+  2. EXPLORATORY DATA ANALYSIS
+     Evaluate the retrieved dataset for machine-learning readiness.  At a
+     minimum, address:
+       • completeness and missing-value patterns
+       • sequence-level statistics (length distribution, composition, etc.)
+       • availability of experimentally derived labels that could serve as
+         supervised targets (e.g. stability, fitness, Tm, ΔΔG)
+       • structural coverage (fraction with solved or predicted structures)
+       • sequence redundancy / diversity
+     Produce at least two informative plots and save them as PNGs under
+     agent_outputs/plots/.
+     Save a machine-readable summary of the key statistics under
+     agent_outputs/data/.
+
+  3. SUPPLEMENTARY DATASET CHECK
+     Identify one or two additional public data sources that could
+     complement or fill gaps in your primary dataset.  For each, retrieve
+     a representative sample, note the record count and any overlap with
+     the primary set, and comment on what new label columns or coverage
+     it would add.  Save a cross-reference summary under
+     agent_outputs/data/.
+
+  4. REPORT
+     Write a report that tells a coherent story:
+      - What you chose and why
+      - How the data was collected
+      - What the EDA revealed (embed your plots)
+      - What the supplementary sources add
+      - A clear ML-readiness verdict with specific gaps
+      - Concrete next steps for someone who wants to build a training set
+  
+
+  Evaluation criteria (for your own reference)
+  ─────────────────────────────────────────────
+  • Justified choices  — did you explain why you picked this family and
+    these databases?
+  • Analytical depth    — does the EDA go beyond row-counts and actually
+    probe ML-relevant properties?
+  • Intellectual honesty — are limitations, caveats, and negative findings
+    reported clearly?
+  • Reproducibility     — could someone re-run your code and get the same
+    results?
+  • Communication       — is the report well-structured, concise, and
+    easy to follow?
+
+  Final answer
+  ────────────
+  When you are finished, list every file you created with a one-line
+  description, state your ML-readiness verdict, and give your top
+  recommendation for what to do next.
+
+# openai service
+llm:
+  provider: openai
+  model: gpt-5.4
+  api_key_env: OPENAI_API_KEY
+
+# azure service
+# llm:
+#   provider: azure
+#   model: gpt-5.4
+#   api_key_env: AZURE_OPENAI_API_KEY
+#   base_url_env: AZURE_OPENAI_BASE_URL
+
+backends:
+  db: sqlite
+  rag: in-memory
+
+app:
+  mode: host
+  workspace:
+    source_root: ./examples/workspaces/research-report-pdf
+    init_mode: copy
+    copy_root: ./.faraday_runtime/workspace-copies
+    keep_copy: false
+
+sandbox:
+  backend: docker
+  docker_image: faraday-code-sandbox
+  workspace:
+    container_path: /workspace
+
+outputs:
+  root: ./run_outputs
+
+storage:
+  sqlite_path: ~/.faraday/faraday.db
+  save_messages: true
+  save_trajectory: true
+
+features:
+  modal: false
+  exa: false

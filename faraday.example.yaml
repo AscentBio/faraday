@@ -1,0 +1,101 @@
+# SkyPilot-style Faraday runtime config
+name: faraday-local
+
+# Optional default query when no query is passed on the CLI (a positional query always wins).
+# query: "Summarize the workspace README."
+
+llm:
+  # Active provider: openai | azure | openrouter
+  provider: openai
+  model: gpt-5.1
+  api_key_env: OPENAI_API_KEY
+
+  # OpenRouter example:
+  # provider: openrouter
+  # api_key_env: OPENROUTER_API_KEY
+  # default_headers:
+  #   HTTP-Referer: https://your-app.example
+  #   X-Title: Faraday
+
+
+  # Azure example:
+  # provider: azure
+  # api_key_env: OPENAI_API_KEY
+  # base_url_env: AZURE_OPENAI_BASE_URL
+  # api_version: preview
+
+
+  # Optional advanced settings for any OpenAI-compatible provider:
+  # base_url: https://api.example.com/v1
+  # default_query:
+  #   api-version: 2025-01-01
+  # organization: your-org
+  # project: your-project
+  # timeout: 60
+  # max_retries: 3
+
+backends:
+  # auto | sqlite
+  db: sqlite
+  # auto | turbopuffer | in-memory | none
+  rag: in-memory
+
+runtime:
+  backend: host
+
+execution:
+  backend: host
+
+storage:
+  # Optional SQLite path when backends.db is sqlite.
+  sqlite_path: ~/.faraday/faraday.db
+
+persistence:
+  # Enable ATIF trajectory export (default: true).
+  atif_trajectory: true
+  # Optional flat directory for trajectory files. When set, each run writes
+  # trajectory_{chat_id}_{run_id}_{ts}.json directly into this directory.
+  # Omit to use the default nested path under outputs.root.
+  # trajectory_dir: ./traces
+
+artifacts:
+  # Optional output directory for run artifacts.
+  output_dir: ""
+  # Optional secondary collection directory for copied artifacts.
+  collect_dir: ""
+  # Auto-collect to Harbor-style directory when true.
+  collect_to_harbor: false
+  # Harbor-style default artifact location.
+  harbor_dir: /logs/artifacts
+
+features:
+  # Toggle optional dependencies installed during Harbor setup.
+  # All default to false unless inferred from other config/env.
+  enable_modal: false
+  enable_exa: false
+
+# Optional list of tool modules loaded before every run (dotted names or .py paths).
+# CLI --tool-module flags are appended after these.
+# tool_modules:
+#   - my_package.tools
+#   - ./tools/scoring.py
+
+batch:
+  # Enable running batches directly from config.
+  enabled: false
+  # Inline prompt list for batch runs.
+  prompts: []
+  # Optional path to .txt/.json/.jsonl batch prompts file.
+  prompts_file: ""
+  # Where batch directories are created (omit to use outputs.root, e.g. ./run_outputs).
+  output_root: ""
+  # Maximum number of prompts to run concurrently.
+  max_concurrency: 1
+  # Retry retryable failures (rate limits / transient provider errors).
+  max_retries: 2
+  # Exponential backoff tuning for retries.
+  retry_base_delay_seconds: 2.0
+  retry_max_delay_seconds: 30.0
+  retry_jitter_seconds: 0.5
+  # Continue on prompt failures when true.
+  continue_on_error: false

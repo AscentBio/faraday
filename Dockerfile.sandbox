@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1
+ARG PYTHON_VERSION=3.10
+FROM python:${PYTHON_VERSION}-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /opt/faraday
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    unzip \
+    wget \
+    libxrender1 \
+    pandoc \
+    latexmk \
+    texlive-latex-base \
+    texlive-latex-recommended \
+    texlive-fonts-recommended \
+    build-essential \
+    cmake \
+    swig \
+    pkg-config \
+    libopenbabel-dev \
+    libxml2-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Mirror faraday/agents/sandbox/packages.py: CORE_SANDBOX
+COPY faraday/agents/sandbox/packages.py /tmp/sandbox_packages.py
+RUN python <<'PY'
+import importlib.util
+import pathlib
+import subprocess
+import sys
+
+module_path = pathlib.Path("/tmp/sandbox_packages.py")
+spec = importlib.util.spec_from_file_location("sandbox_packages", module_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+subprocess.check_call([sys.executable, "-m", "pip", "install", *module.CORE_SANDBOX])
+PY
+
+CMD ["python3"]
