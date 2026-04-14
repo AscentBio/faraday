@@ -1,7 +1,18 @@
-# Faraday Agent
+
+
+<p align="center">
+  <img src="assets/ascii-art-text.png" alt="Faraday wordmark" width="520" />
+</p>
 
 [![PyPI version](https://img.shields.io/pypi/v/faradayai.svg)](https://pypi.org/project/faradayai/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://ascentbio.github.io/faraday-docs/)
+
+
+
+
+
+
 
 ### Accelerating science with agentic AI for research and drug design
 
@@ -9,11 +20,20 @@
 [Faraday](https://ascentbio.ai/) is an AI scientist that carries out research workflows end to end:
 
 
+
+
 ## Install
 
+**With uv:**
+```bash
+uv add faradayai
+```
+
+**With pip:**
 ```bash
 pip install faradayai
 ```
+
 
 ---
 
