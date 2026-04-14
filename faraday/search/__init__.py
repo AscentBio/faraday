@@ -2,11 +2,7 @@
 
 Package layout under ``faraday.search``:
 
-- ``files/`` — search over in-process tracked files.
 - ``web/`` — Exa-backed web and literature tools.
-
-Conversation/memory search helpers live in ``faraday.memory.search_memory`` and are
-registered here alongside file and web tools.
 
 Missing optional packages (``exa_py``) must not prevent the core
 agent from starting; each cluster is imported in its own
@@ -18,8 +14,9 @@ ALL_SEARCH_FNS = []
 SEARCH_TOOL_DICT = {}
 
 # ---------------------------------------------------------------------------
-# Core memory + file search tools (always available)
+# Legacy memory/file search tools
 # ---------------------------------------------------------------------------
+# The old in-process memory/file RAG tools are currently not registered.
 # from faraday.search.files.search_filebase import (
 #     search_filebase_fn,
 #     search_filebase_tool,
@@ -90,6 +87,10 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != "exa_py":
         raise
+except ValueError:
+    # Exa client raises ValueError when EXA_API_KEY is unset; treat the
+    # same as a missing package — the web/literature tools are unavailable.
+    pass
 else:
     ALL_SEARCH_TOOLS.extend(
         [

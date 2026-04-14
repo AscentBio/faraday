@@ -173,7 +173,7 @@ def validate_client_config() -> list[str]:
         raise LLMConfigError(
             f"No API key found.  The environment variable ${api_key_env} is "
             f"empty or unset.\n"
-            f"  → Set it in your shell, .env file, or .env.faraday."
+            f"  → Set it in your shell environment or a standard .env file."
         )
 
     # --- Azure-specific checks ---

@@ -84,13 +84,32 @@ def is_parallel_safe(tool_name: str) -> bool:
 # TOOL REGISTRY (lazy) + RAG / ENV HELPERS
 ######################################################
 
-# Disabled when memory RAG tools are off (see FaradayAgent tool filtering).
-MEMORY_RAG_TOOL_NAMES = frozenset({
-    "search_memory",
-    "search_chat",
-    "get_project_summary",
-    "search_filebase",
-})
+# Reserved for optional memory/file RAG tools if they are reintroduced.
+MEMORY_RAG_TOOL_NAMES = frozenset()
+
+# Maps each tool name to the env-var keys it requires at runtime.
+# Tools whose keys are all present are "ready"; others are excluded
+# from the active toolbox so the agent never offers them to the LLM.
+TOOL_REQUIRED_KEYS: dict[str, list[str]] = {
+    "scientific_literature_search": ["EXA_API_KEY"],
+    "pharma_web_search": ["EXA_API_KEY", "OPENAI_API_KEY"],
+    "general_web_search": ["EXA_API_KEY"],
+    "general_web_search_question_answering": ["EXA_API_KEY"],
+    "read_webpage": ["EXA_API_KEY"],
+    "name_to_smiles": ["EXA_API_KEY", "OPENAI_API_KEY"],
+    "execute_python_code": [],
+    "execute_bash_code": [],
+}
+
+
+def _tools_missing_keys() -> set[str]:
+    """Return tool names whose required env-var keys are not all set."""
+    missing: set[str] = set()
+    for tool_name, keys in TOOL_REQUIRED_KEYS.items():
+        if any(not os.getenv(k) for k in keys):
+            missing.add(tool_name)
+    return missing
+
 
 _tool_registry_cache: Optional[tuple[list, dict]] = None
 
@@ -321,18 +340,29 @@ class FaradayAgent(BaseCodeExecutionAgent):
     def _get_prompt_tools_and_model_for_loop(self) -> tuple[str, list, str]:
         """Select prompt/tools/model per loop iteration for V8 GPT-5."""
         if self.loop_index == 0:
-            return create_configurable_prompt_initial(), [], "gpt-5.2"
+            return create_configurable_prompt_initial(self.active_tools), [], "gpt-5.2"
         return create_configurable_prompt_main(), self.active_tools, self.model
 
     def _merged_tools_dict(self) -> dict:
-        """Built-in registry plus per-instance handlers (adds or overrides search tools)."""
-        return get_all_faraday_agent_tools_dict() | self.extra_tool_handlers
+        """Built-in registry plus per-instance handlers, limited to active tools."""
+        active_names = {t.get("name") for t in self.active_tools}
+        base = get_all_faraday_agent_tools_dict() | self.extra_tool_handlers
+        return {k: v for k, v in base.items() if k in active_names}
 
     def _get_filtered_tools(self) -> list:
-        """Filter out disabled tools."""
+        """Filter out disabled tools and tools whose API keys are missing."""
         disabled = set(self.disabled_tools or [])
         if not self.memory_rag_enabled:
             disabled.update(MEMORY_RAG_TOOL_NAMES)
+
+        unavailable = _tools_missing_keys()
+        if unavailable - disabled:
+            excluded_names = sorted(unavailable - disabled)
+            print(
+                f"ℹ Excluding {len(excluded_names)} tool(s) with missing API keys: "
+                + ", ".join(excluded_names)
+            )
+        disabled |= unavailable
 
         base_tools = get_all_faraday_agent_tools() + self.extra_tools
 

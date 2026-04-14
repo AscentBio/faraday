@@ -36,7 +36,7 @@ from faraday.config import (
     normalize_execution_backend,
     normalize_runtime_app,
 )
-from faraday.openai_clients import get_llm_model
+from faraday.openai_clients import get_client_settings, get_llm_model, get_llm_provider
 
 
 def _default_id(prefix: str) -> str:
@@ -1285,6 +1285,14 @@ class _LogSink:
         ))
 
 
+class AgentInitError(RuntimeError):
+    """Raised when agent initialization fails before the CLI can start."""
+
+    def __init__(self, message: str, log_lines: list[str] | None = None):
+        super().__init__(message)
+        self.log_lines = log_lines or []
+
+
 # ---------------------------------------------------------------------------
 # Tool check: categories, descriptions, required env keys
 # ---------------------------------------------------------------------------
@@ -1300,12 +1308,6 @@ TOOL_CATEGORIES = {
         "read_webpage",
         "name_to_smiles",
     ],
-    "Memory & Files": [
-        "search_memory",
-        "search_chat",
-        "get_project_summary",
-        "search_filebase",
-    ],
     "Code Execution": [
         "execute_python_code",
         "execute_bash_code",
@@ -1319,10 +1321,6 @@ TOOL_SHORT_DESCRIPTIONS = {
     "general_web_search_question_answering": "Web search with answer extraction",
     "read_webpage": "Read and extract content from a URL",
     "name_to_smiles": "Convert molecule names to SMILES notation",
-    "search_memory": "Search conversation memory",
-    "search_chat": "Search past chat messages",
-    "get_project_summary": "Get a summary of the current project",
-    "search_filebase": "Search uploaded files and documents",
     "execute_python_code": "Run Python in a sandboxed environment",
     "execute_bash_code": "Run bash commands in a sandboxed environment",
 }
@@ -1330,31 +1328,50 @@ TOOL_SHORT_DESCRIPTIONS = {
 CATEGORY_PREFIXES = {
     "Literature & Knowledge": "[LIT]",
     "Web & Data": "[WEB]",
-    "Memory & Files": "[MEM]",
     "Code Execution": "[CODE]",
 }
 
-TOOL_REQUIRED_KEYS: dict[str, list[str]] = {
-    "scientific_literature_search": ["EXA_API_KEY"],
-    "pharma_web_search": ["EXA_API_KEY", "OPENAI_API_KEY"],
-    "general_web_search": ["EXA_API_KEY"],
-    "general_web_search_question_answering": ["EXA_API_KEY"],
-    "read_webpage": ["EXA_API_KEY"],
-    "name_to_smiles": ["EXA_API_KEY", "OPENAI_API_KEY"],
-    "search_memory": ["OPENAI_API_KEY"],
-    "search_chat": ["OPENAI_API_KEY"],
-    "get_project_summary": ["OPENAI_API_KEY"],
-    "search_filebase": [],
-    "execute_python_code": [],
-    "execute_bash_code": [],
-}
+from faraday.faraday_agent import TOOL_REQUIRED_KEYS  # single source of truth
 
-AGENT_REQUIRED_KEYS = ["OPENAI_API_KEY"]
 MODAL_REQUIRED_KEYS = ["MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"]
 
 
 def _check_key(name: str) -> bool:
     return bool(os.getenv(name))
+
+
+def _resolved_agent_requirements() -> list[tuple[str, bool, str]]:
+    """Return startup requirements for the configured LLM provider.
+
+    Each tuple is: (label, is_satisfied, note).
+    """
+    provider = get_llm_provider()
+    try:
+        settings = get_client_settings()
+    except Exception:
+        settings = {}
+
+    requirements: list[tuple[str, bool, str]] = []
+    api_key_env = settings.get("api_key_env")
+    if not isinstance(api_key_env, str) or not api_key_env.strip():
+        api_key_env = {
+            "azure": "AZURE_OPENAI_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+        }.get(provider, "OPENAI_API_KEY")
+
+    requirements.append((api_key_env, _check_key(api_key_env), "required to start Faraday"))
+
+    if provider == "azure":
+        has_base_url = bool(settings.get("base_url"))
+        requirements.append(
+            (
+                "AZURE_OPENAI_BASE_URL or llm.base_url",
+                has_base_url,
+                "required for Azure provider",
+            )
+        )
+
+    return requirements
 
 
 def _resolved_exec_backend(args: argparse.Namespace) -> str:
@@ -1451,112 +1468,208 @@ def _preflight_check_docker_image(args: argparse.Namespace) -> None:
 
 def _run_check_tools(agent, args: argparse.Namespace, init_error: str = "") -> int:
     """Print tool + backend env-key health status. Returns exit code."""
-    active_names = set()
+    selected_backend = _resolved_exec_backend(args)
+    active_names: set[str] = set()
     if agent is not None:
         active_names = {
             t.get("name") or t.get("function", {}).get("name", "")
             for t in agent.active_tools
         }
-    show_all_tools = not active_names
-    selected_backend = _resolved_exec_backend(args)
 
+    ok = _green(_CHECK)
+    fail = _red(_CROSS)
+    warn = _yellow(_WARN)
+    hr = _dim("\u2500" * 52)
+    missing_by_key: dict[str, list[str]] = {}
+    total_tools = 0
+    ready_tools = 0
+    agent_requirements = _resolved_agent_requirements()
+    core_missing = [label for label, ok_state, _note in agent_requirements if not ok_state]
+    core_ready = not core_missing
+
+    # ── Header ────────────────────────────────────────
     _println()
     _println(f"  {_c('Faraday Tool Check', '1;96')}")
-    _println(f"  {_c(_HRULE_50, '90')}")
-    _println()
-    ok_label = _green("OK")
-    missing_label = _red("MISSING")
-    warn_label = _yellow("WARN")
-
-    backend_display = _c(selected_backend.upper(), "1;96")
-    _println(f"  {_c('CODE BACKEND IN USE', '1;97')}  {backend_display}")
-    _println(f"  {_c('APP RUNTIME', '1;97')}        {_resolved_app_runtime(args).upper()}")
+    _println(f"  {hr}")
     _println()
 
-    # Agent-level keys
-    _println(f"  {_c('Agent keys', '1;97')}")
+    # ── Configuration ─────────────────────────────────
+    _println(f"  {_c('Configuration', '1;97')}")
+    _println(f"    Backend   {_c(selected_backend.upper(), '1;96')}")
+    _println(f"    Runtime   {_c(_resolved_app_runtime(args).upper(), '1;96')}")
+    _println()
+
+    # ── Core requirements ─────────────────────────────
     all_ok = True
-    for key in AGENT_REQUIRED_KEYS:
-        if _check_key(key):
-            _println(f"    {ok_label} {key}")
+    _println(f"  {_c('Core Requirements', '1;97')}")
+    for label, ok_state, note in agent_requirements:
+        if ok_state:
+            _println(f"    {ok} {label}")
         else:
-            _println(f"    {missing_label} {key}")
+            _println(f"    {fail} {label}  {_dim(f'({note})')}")
             all_ok = False
     _println()
 
-    # Execution-backend keys
-    _println(f"  {_c('Execution backend check', '1;97')}")
+    # ── Execution backend ─────────────────────────────
+    _println(f"  {_c('Execution Backend', '1;97')}")
     if selected_backend == "modal":
         missing_modal = [k for k in MODAL_REQUIRED_KEYS if not _check_key(k)]
         if missing_modal:
-            _println(f"    {missing_label} modal credentials")
+            _println(f"    {fail} modal credentials")
             for k in missing_modal:
-                _println(f"      {missing_label} {k}")
-            _println(f"      {_dim('Get credentials with: modal token new')}")
+                _println(f"        {fail} {k}")
+            _println(f"        {_dim('Get credentials with: modal token new')}")
             all_ok = False
         else:
-            _println(f"    {ok_label} modal credentials")
+            _println(f"    {ok} modal credentials")
     elif selected_backend in {"docker", "host"}:
-        _println(f"    {ok_label} {selected_backend} backend selected (no Modal token required)")
+        _println(f"    {ok} {selected_backend} backend (no Modal token required)")
         if not (args.workspace_source_root or get_workspace_source_root(default="")):
-            _println(
-                f"      {warn_label} set runtime.workspace.source_root in config for predictable local runs"
-            )
+            _println(f"    {warn} set {_bold('runtime.workspace.source_root')} for predictable local runs")
     elif selected_backend == "disabled":
-        _println(f"    {warn_label} execution backend disabled (code tools unavailable)")
+        _println(f"    {warn} execution backend disabled — code tools unavailable")
     else:
-        _println(f"    {warn_label} backend '{selected_backend}' has no dedicated check")
+        _println(f"    {warn} backend '{selected_backend}' has no dedicated check")
     _println()
 
-    # Per-tool
     for category, tool_names in TOOL_CATEGORIES.items():
-        present = tool_names if show_all_tools else [n for n in tool_names if n in active_names]
-        if not present:
+        if not tool_names:
             continue
         prefix = CATEGORY_PREFIXES.get(category, "[TOOL]")
-        _println(f"  {_dim(prefix)} {_c(category, '1;93')}")
 
-        for name in present:
+        ready_in_cat: list[tuple[str, str]] = []
+        missing_in_cat: list[tuple[str, str, list[str]]] = []
+
+        for name in tool_names:
             desc = TOOL_SHORT_DESCRIPTIONS.get(name, "")
             required = TOOL_REQUIRED_KEYS.get(name, [])
             missing = [k for k in required if not _check_key(k)]
-
-            if not required:
-                status = _green("OK ready")
-                _println(f"    {_c(name, '97')}  {status}")
-            elif not missing:
-                status = _green("OK ready")
-                _println(f"    {_c(name, '97')}  {status}")
+            total_tools += 1
+            if missing:
+                missing_in_cat.append((name, desc, missing))
+                for key in missing:
+                    missing_by_key.setdefault(key, []).append(name)
             else:
-                status = _red("MISSING keys")
-                _println(f"    {_c(name, '97')}  {status}")
+                ready_in_cat.append((name, desc))
+                ready_tools += 1
+
+    if core_ready:
+        # ── Per-category tools ────────────────────────────
+        _println(f"  {hr}")
+        _println()
+
+        for category, tool_names in TOOL_CATEGORIES.items():
+            if not tool_names:
+                continue
+            prefix = CATEGORY_PREFIXES.get(category, "[TOOL]")
+
+            ready_in_cat: list[tuple[str, str]] = []
+            missing_in_cat: list[tuple[str, str, list[str]]] = []
+
+            for name in tool_names:
+                desc = TOOL_SHORT_DESCRIPTIONS.get(name, "")
+                required = TOOL_REQUIRED_KEYS.get(name, [])
+                missing = [k for k in required if not _check_key(k)]
+                if missing:
+                    missing_in_cat.append((name, desc, missing))
+                else:
+                    ready_in_cat.append((name, desc))
+
+            cat_ready = len(ready_in_cat)
+            cat_missing = len(missing_in_cat)
+            cat_summary = _dim(f"({cat_ready} ready")
+            if cat_missing:
+                cat_summary += _dim(", ") + _red(f"{cat_missing} blocked") + _dim(")")
+            else:
+                cat_summary += _dim(")")
+            _println(f"  {_dim(prefix)} {_c(category, '1;93')} {cat_summary}")
+
+            max_name_len = 0
+            for name, _desc in ready_in_cat:
+                max_name_len = max(max_name_len, len(name))
+            for name, _desc, _missing_keys in missing_in_cat:
+                max_name_len = max(max_name_len, len(name))
+
+            for name, desc in ready_in_cat:
+                padded_name = name.ljust(max_name_len)
+                line = f"    {ok} {_c(padded_name, '97')}"
+                if desc:
+                    line += f"  {_dim(desc)}"
+                _println(line)
+
+            for name, desc, _missing_keys in missing_in_cat:
+                padded_name = name.ljust(max_name_len)
+                line = f"    {fail} {_c(padded_name, '90')}"
+                if desc:
+                    line += f"  {_dim(desc)}"
+                _println(line)
                 all_ok = False
-                for k in missing:
-                    _println(f"      {missing_label} {k}")
 
-            if desc:
-                _println(f"      {_dim(desc)}")
+            _println()
 
-        _println()
+        optional_missing = {
+            key: tools for key, tools in missing_by_key.items() if key not in core_missing
+        }
+        if optional_missing:
+            _println(f"  {_c('Optional Integrations Disabled', '1;97')}")
+            max_key_len = max(len(key) for key in optional_missing)
+            for key, tools in sorted(optional_missing.items()):
+                tool_list = ", ".join(sorted(tools))
+                _println(f"    {fail} {key.ljust(max_key_len)}  {_dim('enables:')} {tool_list}")
+            _println()
 
-    uncategorized = active_names - {n for names in TOOL_CATEGORIES.values() for n in names}
-    if uncategorized:
-        _println(f"  \u2022 {_c('Other', '1;93')}")
-        for name in sorted(uncategorized):
-            _println(f"    {_c(name, '97')}")
-        _println()
-
-    if init_error:
-        _println(f"  {warn_label} Could not load active tools; showing full known tool list")
-        _println(f"      {_dim(init_error)}")
-        _println()
-
-    _println(f"  {_c(_HRULE_50, '90')}")
-    if all_ok:
-        _println(f"  {ok_label} All tools ready")
+        # Uncategorized tools (e.g. from plugins)
+        all_known = {n for names in TOOL_CATEGORIES.values() for n in names}
+        uncategorized = active_names - all_known
+        if uncategorized:
+            _println(f"  {_dim('[EXT]')} {_c('Other', '1;93')}")
+            for name in sorted(uncategorized):
+                _println(f"    {ok} {_c(name, '97')}")
+                ready_tools += 1
+                total_tools += 1
+            _println()
     else:
-        _println(f"  {warn_label} Some tools have missing keys")
-        _println(f"  {_dim('Tip: run `faraday --check-tools` after exporting missing vars.')}")
+        optional_missing = {
+            key: tools for key, tools in missing_by_key.items() if key not in core_missing
+        }
+        if optional_missing:
+            _println(f"  {_c('Optional Integrations', '1;97')}")
+            _println(f"    {_dim('After Faraday can start, these extra keys enable additional tools:')}")
+            max_key_len = max(len(key) for key in optional_missing)
+            for key, tools in sorted(optional_missing.items()):
+                tool_list = ", ".join(sorted(tools))
+                _println(f"    {warn} {key.ljust(max_key_len)}  {_dim('enables:')} {tool_list}")
+            _println()
+
+        _println(f"  {hr}")
+        _println(f"  {fail} {_red('Faraday cannot start until required core keys are set.')}")
+        _println(f"  {_dim('Set the missing core requirements above, then re-run `faraday --check-tools`.')}")
+        _println()
+        return 1
+
+    # ── Init error (if agent failed to load) ──────────
+    if init_error:
+        clean_error = init_error.strip()
+        missing_agent_keys = [label for label, ok_state, _note in _resolved_agent_requirements() if not ok_state]
+        if clean_error and clean_error != "1":
+            _println(f"  {warn} Agent failed to initialize: {_dim(clean_error)}")
+            _println()
+        elif not missing_agent_keys:
+            _println(f"  {warn} Agent failed to initialize (LLM configuration error)")
+            _println()
+
+    # ── Summary ───────────────────────────────────────
+    _println(f"  {hr}")
+    excluded = total_tools - ready_tools
+    if all_ok:
+        _println(f"  {ok} {_green(f'All {total_tools} tools ready')}")
+    else:
+        sep = _dim("\u00b7")
+        _println(
+            f"  {_green(f'{ready_tools}/{total_tools} tools ready')}"
+            f" {sep} {_red(f'{excluded} excluded')}{_dim(' (missing keys)')}"
+        )
+        _println(f"  {_dim('The agent works with available tools. Export missing keys to enable more.')}")
     _println()
 
     return 0 if all_ok else 1
@@ -1622,6 +1735,26 @@ def _print_startup_banner(
     _println()
 
 
+def _print_agent_init_failure(err: AgentInitError) -> None:
+    core_missing = [label for label, ok_state, _note in _resolved_agent_requirements() if not ok_state]
+
+    _println()
+    _println(f"  {_red(_CROSS)} {_red('Faraday could not start.')}")
+    if core_missing:
+        missing_keys = ", ".join(core_missing)
+        _println(f"  {_dim('Missing required startup requirement(s):')} {_red(missing_keys)}")
+        _println(f"  {_dim('Run `faraday --check-tools` for a full readiness report.')}")
+        _println()
+        return
+
+    message = str(err).strip()
+    if message:
+        _println(f"  {_dim('Startup error:')} {message}")
+    if err.log_lines:
+        _println(f"  {_dim('Use --show-agent-logs for full initialization logs.')}")
+    _println()
+
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -1672,7 +1805,9 @@ def parse_args() -> argparse.Namespace:
     default_app_runtime = get_runtime_app(default="host")
     default_app_docker_image = get_runtime_app_docker_image(default="faraday-oss")
     default_execution_backend = get_execution_backend(default="docker")
-    default_workspace_source_root = get_workspace_source_root(default="") or ""
+    default_workspace_source_root = get_workspace_source_root(
+        default=str(Path.cwd().expanduser().resolve())
+    ) or str(Path.cwd().expanduser().resolve())
     default_workspace_mount_path = get_workspace_mount_path(default="/workspace")
     default_trajectory_path = ""  # persistence.trajectory_path is deprecated; use outputs.root
     default_previous_context = get_path_value("persistence", "previous_context", default="") or ""
@@ -1733,7 +1868,7 @@ def parse_args() -> argparse.Namespace:
     runtime.add_argument(
         "--workspace-source-root",
         default=default_workspace_source_root,
-        help="Workspace source directory for docker/host execution backends.",
+        help="Workspace source directory for docker/host execution backends (default: current working directory).",
     )
     runtime.add_argument(
         "--workspace-mount-path",
@@ -1989,12 +2124,28 @@ def _init_agent_quiet(args: argparse.Namespace, chat_id: str, query_id: str):
     root.handlers = [init_handler]
 
     t0 = perf_counter()
+    agent = None
+    init_error: Exception | SystemExit | None = None
     try:
         with contextlib.redirect_stdout(init_sink), contextlib.redirect_stderr(init_sink):
             agent = _create_agent(args, chat_id, query_id)
+    except (Exception, SystemExit) as exc:
+        init_error = exc
     finally:
         root.handlers = prev_handlers
         init_sink.finalize()
+
+    if init_error is not None:
+        message = str(init_error).strip()
+        if not message or message == "1":
+            for line in reversed(init_sink._lines):
+                clean = line.strip()
+                if clean:
+                    message = clean
+                    break
+        if not message:
+            message = init_error.__class__.__name__
+        raise AgentInitError(message, log_lines=list(init_sink._lines)) from init_error
 
     init_time = perf_counter() - t0
     return agent, init_time
@@ -2009,7 +2160,11 @@ async def _run_once(args: argparse.Namespace, query: str, agent=None, init_time:
     if agent is None:
         chat_id = args.chat_id or _default_id("chat")
         query_id = args.query_id or _default_id("query")
-        agent, init_time = _init_agent_quiet(args, chat_id, query_id)
+        try:
+            agent, init_time = _init_agent_quiet(args, chat_id, query_id)
+        except AgentInitError as exc:
+            _print_agent_init_failure(exc)
+            return 1
         _print_startup_banner(agent, args.config, init_time, detailed=detailed_ui)
 
     artifacts_enabled = not args.no_artifacts
@@ -2189,7 +2344,11 @@ async def _run_once(args: argparse.Namespace, query: str, agent=None, init_time:
 async def _interactive_loop(args: argparse.Namespace) -> int:
     chat_id = args.chat_id or _default_id("chat")
     query_id = args.query_id or _default_id("query")
-    agent, init_time = _init_agent_quiet(args, chat_id, query_id)
+    try:
+        agent, init_time = _init_agent_quiet(args, chat_id, query_id)
+    except AgentInitError as exc:
+        _print_agent_init_failure(exc)
+        return 1
     _print_startup_banner(
         agent,
         args.config,
@@ -2215,6 +2374,8 @@ async def _interactive_loop(args: argparse.Namespace) -> int:
 async def _amain() -> int:
     # Load a .env file if present so users can store API keys there without
     # manually exporting them. Existing shell variables always take precedence.
+    # We intentionally follow the standard `.env` convention rather than any
+    # project-specific dotenv filename.
     try:
         from dotenv import load_dotenv as _load_dotenv
 
@@ -2274,7 +2435,7 @@ async def _amain() -> int:
         init_error = ""
         try:
             agent, _ = _init_agent_quiet(args, chat_id, query_id)
-        except Exception as exc:
+        except (Exception, SystemExit) as exc:
             init_error = str(exc)
         return _run_check_tools(agent, args=args, init_error=init_error)
 

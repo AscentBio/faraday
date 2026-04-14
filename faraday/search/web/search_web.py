@@ -6,9 +6,7 @@ from agents import function_tool
 
 from faraday.openai_clients import llm_client
 import json
-from dotenv import load_dotenv
 import os
-# load_dotenv()
 from datetime import datetime
 
 

@@ -5,9 +5,7 @@ from agents import function_tool
 
 from faraday.openai_clients import llm_client
 import json
-from dotenv import load_dotenv
 import os
-# load_dotenv()
 from datetime import datetime
 
 # print(f'os.getenv("EXA_API_KEY"): {os.getenv("EXA_API_KEY")[:5]}...')

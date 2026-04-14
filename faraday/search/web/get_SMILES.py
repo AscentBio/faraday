@@ -5,7 +5,6 @@ from exa_py import Exa
 import os
 
 from faraday.openai_clients import llm_client
-# load_dotenv()
 from datetime import datetime
 
 

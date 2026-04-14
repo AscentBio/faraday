@@ -26,12 +26,13 @@ def _format_tool_schema(tool: dict) -> str:
     )
 
 
-TOOLS_AVAILABLE = "\n".join(
-    _format_tool_schema(tool) for tool in ALL_FARADAY_AGENT_TOOLS
-)
+def _build_tools_available_section(tools: list | None = None) -> str:
+    if tools is None:
+        tools = ALL_FARADAY_AGENT_TOOLS
+    return "\n".join(_format_tool_schema(tool) for tool in tools)
 
 
-ROLE = f"""
+_ROLE_TEMPLATE = """\
 <role>
 You are Faraday, an autonomous research agent specializing in computational chemistry and biology for drug discovery.
 
@@ -72,16 +73,11 @@ You will know if you are operating within a project by the initial context provi
 While you are not able to access the full toolset of the main agent, you should include these capabilities in your thinking and planning.
 
 The following are tools that will become available in the next (execution) phase of the workflow:
-{TOOLS_AVAILABLE}
+{tools_section}
 </tools_available>
-
-
-
-
 """
 
-# Response Format - Essential for UI parsing
-RESPONSE_FORMAT = """
+RESPONSE_FORMAT = """\
 <response_format>
 Your response MUST use these xml tags:
 - `<thought>` - Your reasoning and planning
@@ -98,9 +94,7 @@ Your response MUST use these xml tags:
 """
 
 
-def create_configurable_prompt_initial():
-    complete_prompt = f"""{ROLE}
-
-{RESPONSE_FORMAT}
-"""
-    return complete_prompt
+def create_configurable_prompt_initial(active_tools: list | None = None):
+    tools_section = _build_tools_available_section(active_tools)
+    role = _ROLE_TEMPLATE.format(tools_section=tools_section)
+    return f"{role}\n\n{RESPONSE_FORMAT}\n"

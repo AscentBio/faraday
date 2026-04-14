@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -29,7 +30,16 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 register_backend("docker", DockerSandboxManager)
 register_backend("host", LocalSandboxManager)
 if _ModalSandboxManager is not None:
-    register_backend("modal", _ModalSandboxManager)
+    # The Modal backend intentionally lacks a few optional methods that the
+    # runtime already guards with ``hasattr`` checks, so suppress the noisy
+    # import-time warning during built-in registration.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Backend 'modal'.*missing optional methods:.*",
+            category=UserWarning,
+        )
+        register_backend("modal", _ModalSandboxManager)
 
 
 # Modal-only directory list — Docker and local managers declare their own concrete dirs.
