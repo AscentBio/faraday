@@ -6,8 +6,6 @@
 ### Accelerating science with agentic AI for research and drug design
 
 
-
-
 [Faraday](https://ascentbio.ai/) is an AI scientist that carries out research workflows end to end:
 
 
@@ -15,12 +13,6 @@
 
 ```bash
 pip install faradayai
-```
-
-Requires **Python 3.10+**. For a development install from the repo root:
-
-```bash
-pip install -e .
 ```
 
 ---
