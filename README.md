@@ -68,7 +68,7 @@ llm:
 llm:
   provider: azure
   model: gpt-5
-  api_key: OPENAI_API_KEY
+  api_key: AZURE_OPENAI_API_KEY
   base_url: AZURE_OPENAI_BASE_URL
   api_version: preview
 ```
