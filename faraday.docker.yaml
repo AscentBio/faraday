@@ -17,11 +17,12 @@ backends:
 
 app:
   mode: docker
+  workspace:
+    source_root: /workspace
 
 sandbox:
   backend: docker
   docker_image: faraday-code-sandbox
-  allow_host_runtime: false
   workspace:
     container_path: /workspace
 
@@ -30,7 +31,3 @@ outputs:
 
 storage:
   sqlite_path: /workspace/.faraday_runtime/faraday.db
-
-batch:
-  output_root: /workspace/traces
-  continue_on_error: false

@@ -1,4 +1,4 @@
-# SkyPilot-style Faraday runtime config
+# Example Faraday runtime config — copy to faraday.yaml and edit as needed.
 name: faraday-local
 
 # Optional default query when no query is passed on the CLI (a positional query always wins).
@@ -17,13 +17,11 @@ llm:
   #   HTTP-Referer: https://your-app.example
   #   X-Title: Faraday
 
-
   # Azure example:
   # provider: azure
-  # api_key_env: OPENAI_API_KEY
+  # api_key_env: AZURE_OPENAI_API_KEY
   # base_url_env: AZURE_OPENAI_BASE_URL
   # api_version: preview
-
 
   # Optional advanced settings for any OpenAI-compatible provider:
   # base_url: https://api.example.com/v1
@@ -37,65 +35,55 @@ llm:
 backends:
   # auto | sqlite
   db: sqlite
-  # auto | turbopuffer | in-memory | none
+  # auto | in-memory | none
   rag: in-memory
 
-runtime:
-  backend: host
+app:
+  mode: host                # host | docker
+  workspace:
+    source_root: .
+    # init_mode: bind       # bind | copy
+    # copy_root: ./.faraday_runtime/workspace-copies
+    # keep_copy: false
 
-execution:
-  backend: host
+sandbox:
+  backend: docker           # docker | modal | host | disabled
+  # docker_image: faraday-code-sandbox
+  workspace:
+    container_path: /workspace
+
+outputs:
+  root: ./run_outputs
+  # artifacts:
+  #   collect_dir: ""
+  #   collect_to_harbor: false
+  #   harbor_dir: /logs/artifacts
 
 storage:
-  # Optional SQLite path when backends.db is sqlite.
   sqlite_path: ~/.faraday/faraday.db
+  save_messages: true
+  save_trajectory: true
+  # previous_context: ""
 
-persistence:
-  # Enable ATIF trajectory export (default: true).
-  atif_trajectory: true
-  # Optional flat directory for trajectory files. When set, each run writes
-  # trajectory_{chat_id}_{run_id}_{ts}.json directly into this directory.
-  # Omit to use the default nested path under outputs.root.
-  # trajectory_dir: ./traces
-
-artifacts:
-  # Optional output directory for run artifacts.
-  output_dir: ""
-  # Optional secondary collection directory for copied artifacts.
-  collect_dir: ""
-  # Auto-collect to Harbor-style directory when true.
-  collect_to_harbor: false
-  # Harbor-style default artifact location.
-  harbor_dir: /logs/artifacts
+batch:
+  enabled: false
+  prompts: []
+  # prompts_file: ""
+  max_concurrency: 1
+  max_retries: 2
+  retry_base_delay_seconds: 2.0
+  retry_max_delay_seconds: 30.0
+  retry_jitter_seconds: 0.5
+  continue_on_error: false
 
 features:
-  # Toggle optional dependencies installed during Harbor setup.
-  # All default to false unless inferred from other config/env.
-  enable_modal: false
-  enable_exa: false
+  modal: false
+  exa: false
+  python_science_stack: true
+  cheminformatics_stack: false
 
 # Optional list of tool modules loaded before every run (dotted names or .py paths).
 # CLI --tool-module flags are appended after these.
 # tool_modules:
 #   - my_package.tools
 #   - ./tools/scoring.py
-
-batch:
-  # Enable running batches directly from config.
-  enabled: false
-  # Inline prompt list for batch runs.
-  prompts: []
-  # Optional path to .txt/.json/.jsonl batch prompts file.
-  prompts_file: ""
-  # Where batch directories are created (omit to use outputs.root, e.g. ./run_outputs).
-  output_root: ""
-  # Maximum number of prompts to run concurrently.
-  max_concurrency: 1
-  # Retry retryable failures (rate limits / transient provider errors).
-  max_retries: 2
-  # Exponential backoff tuning for retries.
-  retry_base_delay_seconds: 2.0
-  retry_max_delay_seconds: 30.0
-  retry_jitter_seconds: 0.5
-  # Continue on prompt failures when true.
-  continue_on_error: false
