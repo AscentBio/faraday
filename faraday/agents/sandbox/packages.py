@@ -51,7 +51,7 @@ CORE_SANDBOX = CORE_BASE + CORE_DOCUMENT + CORE_CHEM + CORE_BIO
 # ------
 
 EXT_CHEM = [
-    "openbabel-wheel",        # PyPI wheel variant; otherwise system openbabel
+    "openbabel>=3.2.0",        # PyPI wheel variant; otherwise system openbabel
     "py3Dmol",                # visualization
     "meeko",                  # ligand prep for AutoDock/Gnina
     # "gnina",                # usually not via pip; run as CLI in image if needed
